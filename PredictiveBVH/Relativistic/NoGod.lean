@@ -1,9 +1,6 @@
 -- SPDX-License-Identifier: MIT
 -- Copyright (c) 2026-present K. S. Ernest (iFire) Lee
 
-import PredictiveBVH.Primitives.Types
-import PredictiveBVH.Protocol.Fabric
-
 -- ============================================================================
 -- RELATIVISTIC ZONE THEORY: NO EGO, NO GOD, NO DETERMINISM
 --
@@ -370,7 +367,7 @@ structure RelReplica (n : Nat) where
   accY        : Int
   accZ        : Int
   sentAt      : VClock n
-  deriving Repr
+  deriving Repr, Inhabited
 
 /-- A replica is stale relative to a local clock if the local clock has advanced
     strictly beyond sentAt on the authority node's component.
@@ -480,6 +477,12 @@ theorem HLC.merge_ge_remote {local remote : HLC} (nowPt : Nat) :
       Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_left _ _)
     omega
   · split_ifs at hl <;> omega
+
+instance : DecidableEq HLC := inferInstance
+
+/-- Decidable ≤ on HLCs: a ≤ b iff ¬(b < a).  Used in `if`-guards. -/
+def HLC.leb (a b : HLC) : Bool :=
+  a.pt < b.pt || (a.pt == b.pt && a.l ≤ b.l)
 
 /-- Embed an HLC into a single-node VClock using a linear encoding.
     maxL bounds the logical counter; the slot width is (maxL + 1) so
