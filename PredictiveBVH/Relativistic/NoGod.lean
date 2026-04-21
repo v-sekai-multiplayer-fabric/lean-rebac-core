@@ -408,7 +408,7 @@ theorem fresh_replica_le_clock {n : Nat} (rep : RelReplica n)
 structure HLC where
   pt : Nat   -- physical time (NTP ticks, rounded to simTickHz grid)
   l  : Nat   -- logical counter (resets when pt advances)
-  deriving Repr, Inhabited
+  deriving Repr, Inhabited, DecidableEq
 
 /-- HLC causal order: (pt1, l1) < (pt2, l2) iff pt1 < pt2 ∨ (pt1 = pt2 ∧ l1 < l2). -/
 def HLC.lt (a b : HLC) : Prop :=
@@ -426,57 +426,78 @@ theorem HLC.lt_trans {a b c : HLC} (hab : HLC.lt a b) (hbc : HLC.lt b c) : HLC.l
     If nowPt > local.pt, reset the logical counter to 0 and bump pt.
     If nowPt ≤ local.pt (same tick or clock stall), keep pt and bump l.
     Matches the C++ HLC::advance in relativistic_zone.h. -/
-def HLC.advance (local : HLC) (nowPt : Nat) : HLC :=
-  let pt := max local.pt nowPt
+def HLC.advance (src : HLC) (nowPt : Nat) : HLC :=
+  let pt := max src.pt nowPt
   { pt := pt
-    l  := if pt = local.pt then local.l + 1 else 0 }
+    l  := if pt = src.pt then src.l + 1 else 0 }
 
 /-- advance always produces a strictly later HLC. -/
-theorem HLC.advance_lt {local : HLC} (nowPt : Nat) :
-    HLC.lt local (HLC.advance local nowPt) := by
+theorem HLC.advance_lt {src : HLC} (nowPt : Nat) :
+    HLC.lt src (HLC.advance src nowPt) := by
   unfold HLC.advance HLC.lt
   simp only
-  by_cases h : max local.pt nowPt = local.pt
-  · simp only [h, if_true, lt_irrefl, false_or]
-    exact ⟨rfl, Nat.lt_succ_self _⟩
+  by_cases h : max src.pt nowPt = src.pt
+  · right
+    simp only [h]
+    exact ⟨trivial, Nat.lt_succ_self _⟩
   · left
     exact Nat.lt_of_le_of_ne (Nat.le_max_left _ _) (fun heq => h heq.symm)
 
 /-- Receiving a later physical time does not decrease pt. -/
-theorem HLC.advance_pt_ge {local : HLC} (nowPt : Nat) :
-    local.pt ≤ (HLC.advance local nowPt).pt := by
+theorem HLC.advance_pt_ge {src : HLC} (nowPt : Nat) :
+    src.pt ≤ (HLC.advance src nowPt).pt := by
   simp [HLC.advance, Nat.le_max_left]
 
 /-- Merge two HLCs on receive: pick the causally later one then advance.
     Invariants proved in HLC.merge_ge_local / HLC.merge_ge_remote via split_ifs + omega. -/
-def HLC.merge (local remote : HLC) (nowPt : Nat) : HLC :=
-  let pt := max (max local.pt remote.pt) nowPt
+def HLC.merge (src remote : HLC) (nowPt : Nat) : HLC :=
+  let pt := max (max src.pt remote.pt) nowPt
   { pt := pt
-    l  := if pt = local.pt && pt = remote.pt then max local.l remote.l + 1
-          else if pt = local.pt then local.l + 1
+    l  := if pt = src.pt && pt = remote.pt then max src.l remote.l + 1
+          else if pt = src.pt then src.l + 1
           else if pt = remote.pt then remote.l + 1
           else 0 }
 
 /-- merge result is causally ≥ both inputs. -/
-theorem HLC.merge_ge_local {local remote : HLC} (nowPt : Nat) :
-    ¬ HLC.lt (HLC.merge local remote nowPt) local := by
-  unfold HLC.merge HLC.lt
+theorem HLC.merge_ge_local {src remote : HLC} (nowPt : Nat) :
+    ¬ HLC.lt (HLC.merge src remote nowPt) src := by
+  simp only [HLC.lt, HLC.merge]
   intro h
   rcases h with h | ⟨hpt, hl⟩
-  · have : local.pt ≤ max (max local.pt remote.pt) nowPt :=
+  · have : src.pt ≤ max (max src.pt remote.pt) nowPt :=
       Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_left _ _)
     omega
-  · split_ifs at hl <;> omega
+  · by_cases h1 : max (max src.pt remote.pt) nowPt = src.pt
+    · rw [h1] at hl hpt
+      by_cases h2 : src.pt = remote.pt
+      · rw [h2] at hl
+        simp only [decide_true, Bool.and_true, ite_true] at hl
+        omega
+      · rw [show (decide (src.pt = remote.pt) : Bool) = false from
+              decide_eq_false_iff_not.mpr h2] at hl
+        simp only [Bool.and_false, Bool.false_eq_true, ite_false, ite_true] at hl
+        omega
+    · omega
 
-theorem HLC.merge_ge_remote {local remote : HLC} (nowPt : Nat) :
-    ¬ HLC.lt (HLC.merge local remote nowPt) remote := by
-  unfold HLC.merge HLC.lt
+theorem HLC.merge_ge_remote {src remote : HLC} (nowPt : Nat) :
+    ¬ HLC.lt (HLC.merge src remote nowPt) remote := by
+  simp only [HLC.lt, HLC.merge]
   intro h
   rcases h with h | ⟨hpt, hl⟩
-  · have : remote.pt ≤ max (max local.pt remote.pt) nowPt :=
+  · have : remote.pt ≤ max (max src.pt remote.pt) nowPt :=
       Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_left _ _)
     omega
-  · split_ifs at hl <;> omega
+  · by_cases h1 : max (max src.pt remote.pt) nowPt = remote.pt
+    · rw [h1] at hl hpt
+      by_cases h2 : remote.pt = src.pt
+      · rw [h2] at hl
+        simp only [decide_true, Bool.and_true, ite_true] at hl
+        omega
+      · rw [show (decide (remote.pt = src.pt) : Bool) = false from
+              decide_eq_false_iff_not.mpr h2] at hl
+        simp only [Bool.false_and, Bool.false_eq_true, ite_false, if_neg h2, ite_true] at hl
+        omega
+    · omega
 
 instance : DecidableEq HLC := inferInstance
 
@@ -569,16 +590,19 @@ theorem uniform_partition_disjoint (n zoneCount : Nat)
   simp only [ZoneRange.contains, Bool.and_eq_true, decide_eq_true_eq] at hc1 hc2
   obtain ⟨hlo1, hhi1⟩ := hc1
   obtain ⟨hlo2, hhi2⟩ := hc2
-  by_contra hne
-  rcases Nat.lt_or_gt_of_ne hne with hlt | hlt
-  · have hstep : z1 * cell_w + cell_w ≤ z2 * cell_w :=
-      calc z1 * cell_w + cell_w = (z1 + 1) * cell_w := by ring
-        _ ≤ z2 * cell_w := Nat.mul_le_mul_right cell_w hlt
-    omega
-  · have hstep : z2 * cell_w + cell_w ≤ z1 * cell_w :=
-      calc z2 * cell_w + cell_w = (z2 + 1) * cell_w := by ring
-        _ ≤ z1 * cell_w := Nat.mul_le_mul_right cell_w hlt
-    omega
+  by_cases heq : z1 = z2
+  · exact heq
+  · exfalso
+    by_cases hlt : z1 < z2
+    · have hstep : z1 * cell_w + cell_w ≤ z2 * cell_w :=
+        calc z1 * cell_w + cell_w = (z1 + 1) * cell_w := by rw [Nat.succ_mul]
+          _ ≤ z2 * cell_w := Nat.mul_le_mul_right cell_w hlt
+      omega
+    · have hlt2 : z2 < z1 := Nat.lt_of_le_of_ne (Nat.le_of_not_lt hlt) (Ne.symm heq)
+      have hstep : z2 * cell_w + cell_w ≤ z1 * cell_w :=
+        calc z2 * cell_w + cell_w = (z2 + 1) * cell_w := by rw [Nat.succ_mul]
+          _ ≤ z1 * cell_w := Nat.mul_le_mul_right cell_w hlt2
+      omega
 
 /-- geometricAuthority on a view returns a zone id that is a valid index
     into view.ranges, given the invariant that every stored zone id is in-bounds.
@@ -592,6 +616,6 @@ theorem geometric_authority_zoneId_lt_length {n : Nat}
     {r : ZoneRange} (hauth : geometricAuthority view h = some r) :
     r.zoneId < view.ranges.length := by
   unfold geometricAuthority at hauth
-  exact hvalid r (List.find?_mem hauth)
+  exact hvalid r (List.mem_of_find?_eq_some hauth)
 
 end PredictiveBVH.Relativistic
