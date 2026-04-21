@@ -551,7 +551,7 @@ theorem HLC.toVClock_lt_of_pt_lt (maxL : Nat) (a b : HLC)
 -- The two theorems below are the formal statements of that bridge.
 
 /-- The uniform initial partition (one ZoneRange per zone, cell width =
-    mortonSpanWidth (zonePrefixDepth zoneCount)) satisfies DisjointRanges.
+    hilbertSpanWidth (zonePrefixDepth zoneCount)) satisfies DisjointRanges.
     Proved by contradiction: if z1 ≠ z2 then one interval strictly precedes the
     other (via Nat.mul_le_mul_right + omega); both containing h is impossible. -/
 theorem uniform_partition_disjoint (n zoneCount : Nat)
