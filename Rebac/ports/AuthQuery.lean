@@ -1,0 +1,5 @@
+-- SPDX-License-Identifier: MIT
+-- AuthQuery — port: relationship-based access-control decisions (NoGod/ReBAC).
+--
+-- Port contract stub: define the narrow interface the core depends on and an
+-- adapter implements. Kept at the lowest common denominator across bindings.

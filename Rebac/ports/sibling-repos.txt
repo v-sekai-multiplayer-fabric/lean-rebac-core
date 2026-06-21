@@ -1,0 +1,2 @@
+# Rebac/ports — sibling wiring declared per the hexagonal convention
+# wire: (standalone — no sibling cores)
