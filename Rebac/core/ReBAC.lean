@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: MIT
 -- Copyright (c) 2026-present K. S. Ernest (iFire) Lee
 
-import PredictiveBVH.Relativistic.NoGod
+import Rebac.core.NoGod
 import Mathlib.Tactic
 
 -- ============================================================================
